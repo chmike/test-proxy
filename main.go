@@ -1,14 +1,17 @@
 package main
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/asn1"
 	"flag"
 	"fmt"
-	"go-proxy"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
+
+	"github.com/ayllon/go-proxy"
 )
 
 var (
@@ -59,17 +62,29 @@ func decodeFromFile(filename string) {
 func main() {
 	flag.Parse()
 
+	caCertPool := CaCerts("cas.pem")
+
 	// decodeFromFile(flag.Arg(0))
 	// certPool := CaCerts("cas.pem")
 
 	if *serverFlag != "" {
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain")
 			fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
 		})
-		log.Fatal(http.ListenAndServe(*serverFlag, nil))
+		log.Fatal(http.ListenAndServeTLS(*serverFlag, "marc-crt.pem", "marc-key.pem", nil))
 	}
 	if *clientFlag != "" {
-		res, err := http.Get("http://" + *clientFlag + "/toto")
+		client := &http.Client{Transport: &http.Transport{
+			TLSHandshakeTimeout: 5 * time.Second,
+			TLSClientConfig: &tls.Config{
+				//Certificates: certs,
+				// InsecureSkipVerify: true,
+				RootCAs: caCertPool,
+			},
+		}}
+
+		res, err := client.Get("https://" + *clientFlag + "/toto")
 		if err != nil {
 			log.Fatalln("http get error:", err)
 		}
