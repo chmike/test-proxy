@@ -64,21 +64,30 @@ func main() {
 
 	caCertPool := CaCerts("cas.pem")
 
-	// decodeFromFile(flag.Arg(0))
-	// certPool := CaCerts("cas.pem")
-
 	if *serverFlag != "" {
+		server := &http.Server{
+			Addr: *serverFlag,
+			TLSConfig: &tls.Config{
+				ClientAuth: tls.RequireAndVerifyClientCert,
+				RootCAs:    caCertPool,
+			},
+		}
+
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/plain")
 			fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
 		})
-		log.Fatal(http.ListenAndServeTLS(*serverFlag, "marc-crt.pem", "marc-key.pem", nil))
+		log.Fatal(server.ListenAndServeTLS("marc-crt.pem", "marc-key.pem"))
 	}
 	if *clientFlag != "" {
+		cert, err := tls.LoadX509KeyPair("dirac-cert.pem", "dirac-cert.pem")
+		if err != nil {
+			log.Fatal(err)
+		}
 		client := &http.Client{Transport: &http.Transport{
 			TLSHandshakeTimeout: 5 * time.Second,
 			TLSClientConfig: &tls.Config{
-				//Certificates: certs,
+				Certificates: []tls.Certificate{cert},
 				// InsecureSkipVerify: true,
 				RootCAs: caCertPool,
 			},
