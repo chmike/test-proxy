@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"flag"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 
 	"github.com/ayllon/go-proxy"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -44,6 +46,23 @@ func CaCerts(filename string) *x509.CertPool {
 	return certPool
 }
 
+// ProxyCaCerts loads the CA certificates from the file into a ProxyCertPool.
+func ProxyCaCerts(filename string) (*proxy.CertPool, error) {
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	roots := &proxy.CertPool{
+		CertPool: x509.NewCertPool(),
+		Crls:     make(map[string]*pkix.CertificateList),
+		CaByHash: make(map[string]*x509.Certificate),
+	}
+	if err := roots.AppendFromPEM(data, false); err != nil {
+		return nil, err
+	}
+	return roots, nil
+}
+
 func decodeFromFile(filename string) {
 	var p proxy.X509Proxy
 	if e := p.DecodeFromFile(filename); e != nil {
@@ -59,16 +78,16 @@ func decodeFromFile(filename string) {
 }
 
 // VerifiedProxyCert returns the first verified proxy certificate in certs, or nil if none.
-func VerifiedProxyCert(certs []*x509.Certificate) *proxy.X509Proxy {
-	for i := range certs {
-
+func VerifiedProxyCert(certs []*x509.Certificate, caCertPool *proxy.CertPool) (*proxy.X509Proxy, error) {
+	p := &proxy.X509Proxy{}
+	if err := p.InitFromCertificates(certs); err != nil {
+		return nil, errors.Wrap(err, "convert to proxy")
 	}
-	return nil
-}
+	if err := p.Verify(proxy.VerifyOptions{Roots: caCertPool}); err != nil {
+		return nil, errors.Wrap(err, "verify proxy")
+	}
 
-// DiracGroup returns the first dirac group found in a certificate, or return an empty string.
-func DiracGroup(certs []*x509.Certificate) string {
-	return ""
+	return p, nil
 }
 
 func main() {
@@ -76,6 +95,10 @@ func main() {
 
 	listenAddr := flag.Arg(0)
 	caCertPool := CaCerts("cas.pem")
+	proxyCaCertPool, err := ProxyCaCerts("cas.pem")
+	if err != nil {
+		log.Fatal("failed loading ca certs: ", err)
+	}
 
 	server := &http.Server{
 		Addr: listenAddr,
@@ -87,10 +110,18 @@ func main() {
 	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		DiracGroup(r.TLS.PeerCertificates)
+		p, err := VerifiedProxyCert(r.TLS.PeerCertificates, proxyCaCertPool)
+		if err != nil {
+			log.Println(err)
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprintf(w, "Error: %s", err)
+			return
+		}
+		fmt.Println("Group:", DiracGroupName(p))
 
 		w.Header().Set("Content-Type", "text/plain")
-		fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
+		fmt.Fprintf(w, "Hi there, I love %s!\n", r.URL.Path[1:])
+		fmt.Fprintf(w, "Your group %s!\n", DiracGroupName(p))
 	})
 	log.Fatal(server.ListenAndServeTLS("marc-crt.pem", "marc-key.pem"))
 }

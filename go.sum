@@ -1,2 +1,4 @@
 github.com/ayllon/go-proxy v0.0.0-20190930111657-cd34473813b9 h1:EiGlpA5mFzukUYP7IuJ/Y76m4WEdFnS7vbzDru1n+FU=
 github.com/ayllon/go-proxy v0.0.0-20190930111657-cd34473813b9/go.mod h1:JGnegAAM1Nxc4mRN8zRv5XY9q3lgZOpwXD+uuq67fao=
+github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
+github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
