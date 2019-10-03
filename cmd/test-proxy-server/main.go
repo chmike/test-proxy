@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/ayllon/go-proxy"
 )
@@ -32,7 +31,7 @@ func DiracGroupName(p *proxy.X509Proxy) string {
 	return ""
 }
 
-// CaCerts loads CA certificates.
+// CaCerts loads the CA certificates from the file into a CertPool.
 func CaCerts(filename string) *x509.CertPool {
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -59,49 +58,39 @@ func decodeFromFile(filename string) {
 	}
 }
 
+// VerifiedProxyCert returns the first verified proxy certificate in certs, or nil if none.
+func VerifiedProxyCert(certs []*x509.Certificate) *proxy.X509Proxy {
+	for i := range certs {
+
+	}
+	return nil
+}
+
+// DiracGroup returns the first dirac group found in a certificate, or return an empty string.
+func DiracGroup(certs []*x509.Certificate) string {
+	return ""
+}
+
 func main() {
 	flag.Parse()
 
+	listenAddr := flag.Arg(0)
 	caCertPool := CaCerts("cas.pem")
 
-	if *serverFlag != "" {
-		server := &http.Server{
-			Addr: *serverFlag,
-			TLSConfig: &tls.Config{
-				ClientAuth: tls.RequireAndVerifyClientCert,
-				RootCAs:    caCertPool,
-			},
-		}
-
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/plain")
-			fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
-		})
-		log.Fatal(server.ListenAndServeTLS("marc-crt.pem", "marc-key.pem"))
+	server := &http.Server{
+		Addr: listenAddr,
+		TLSConfig: &tls.Config{
+			// ClientAuth: tls.RequireAndVerifyClientCert, : verify proxy certificate fails
+			ClientAuth: tls.RequireAnyClientCert, // may be as well RequestClientCert
+			RootCAs:    caCertPool,
+		},
 	}
-	if *clientFlag != "" {
-		cert, err := tls.LoadX509KeyPair("dirac-cert.pem", "dirac-cert.pem")
-		if err != nil {
-			log.Fatal(err)
-		}
-		client := &http.Client{Transport: &http.Transport{
-			TLSHandshakeTimeout: 5 * time.Second,
-			TLSClientConfig: &tls.Config{
-				Certificates: []tls.Certificate{cert},
-				// InsecureSkipVerify: true,
-				RootCAs: caCertPool,
-			},
-		}}
 
-		res, err := client.Get("https://" + *clientFlag + "/toto")
-		if err != nil {
-			log.Fatalln("http get error:", err)
-		}
-		defer res.Body.Close()
-		body, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			log.Fatalln("read response body error:", err)
-		}
-		log.Println(string(body))
-	}
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		DiracGroup(r.TLS.PeerCertificates)
+
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
+	})
+	log.Fatal(server.ListenAndServeTLS("marc-crt.pem", "marc-key.pem"))
 }
